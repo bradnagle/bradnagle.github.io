@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AUD–USD FX Dashboard</title>
+  <meta name="description" content="AUD/USD exchange rate dashboard with intraday and historical views. Ready for GitHub Pages." />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>💱</text></svg>">
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .heartbeat {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #10b981;
+      margin-right: 6px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .heartbeat.stale { background-color: #dc2626; animation: none; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100">
+  <main class="max-w-6xl mx-auto p-5 md:p-8 pb-16" id="appRoot">
+    <header class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">AUD–USD FX Dashboard</h1>
+        <span class="px-2 py-1 text-xs rounded-md bg-slate-200/70 dark:bg-white/10" id="clock">—</span>
+      </div>
+    </header>
+
+    <section class="card p-5 mb-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">AUD/USD — 1D</h2>
+        <div class="flex items-center gap-2 text-xs text-slate-500" id="updateInfo">
+          <span class="heartbeat" id="heartbeat"></span>
+          <span id="lastUpdated">Last updated —</span>
+        </div>
+      </div>
+      <canvas id="chart" height="160"></canvas>
+    </section>
+  </main>
+
+  <script>
+    const hb = document.getElementById('heartbeat');
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+
+    async function fetchIntraday15m() {
+      const url = 'https://query1.finance.yahoo.com/v8/finance/chart/AUDUSD=X?range=1d&interval=15m';
+      const res = await fetch(url);
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      const ts = result?.timestamp || [];
+      const closes = result?.indicators?.quote?.[0]?.close || [];
+      const entries = ts.map((t, i) => {
+        const d = new Date(t * 1000);
+        return { time: d, value: closes[i] };
+      }).filter(p => Number.isFinite(p.value));
+      return entries;
+    }
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart;
+
+    function renderChart(labels, data) {
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ data, borderColor: 'rgb(16,185,129)', tension: 0.25, borderWidth: 2 }] },
+        options: { scales: { x: { display: true }, y: { display: true } }, plugins: { legend: { display: false } } }
+      });
+    }
+
+    async function refresh() {
+      const series = await fetchIntraday15m();
+      if (!series.length) return;
+      const labels = series.map(p => p.time.toLocaleTimeString());
+      const data = series.map(p => p.value);
+      renderChart(labels, data);
+
+      const lastTs = series[series.length - 1].time;
+      const minsAgo = Math.floor((Date.now() - lastTs.getTime()) / 60000);
+      const stale = minsAgo > 15;
+
+      lastUpdatedEl.textContent = `Last updated ${lastTs.toLocaleTimeString()} (${minsAgo}m ago)`;
+      hb.classList.toggle('stale', stale);
+    }
+
+    setInterval(refresh, 5 * 60 * 1000);
+    refresh();
+  </script>
+</body>
+</html>
