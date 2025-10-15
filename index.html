@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AUD–USD FX Dashboard</title>
+  <meta name="description" content="AUD/USD exchange rate dashboard with 1D, 1W, 1M, 1Y history. Ready for GitHub Pages." />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>💱</text></svg>">
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .btn { @apply px-3 py-1.5 rounded-xl text-sm font-medium border transition; }
+    .btn-active { @apply bg-blue-600 text-white border-blue-600; }
+    .btn-inactive { @apply bg-white/60 dark:bg-white/10 border-slate-300/60 dark:border-white/10 hover:bg-white; }
+    .card { @apply rounded-2xl shadow-sm border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 backdrop-blur; }
+    .kpi { @apply text-4xl md:text-5xl font-semibold; }
+    .kpi-sub { @apply text-sm md:text-base text-slate-500; }
+    .screen-xl .kpi { font-size: 5rem; }
+    .screen-xl .kpi-sub { font-size: 1.25rem; }
+    .screen-xl .btn { @apply text-base px-4 py-2; }
+
+    /* Ticker */
+    .ticker { position: fixed; left: 0; right: 0; bottom: 0; height: 44px; display:flex; align-items:center; overflow:hidden; background: rgb(2 6 23 / 0.85); color:white; }
+    .ticker-track { white-space: nowrap; display:inline-block; animation: ticker 30s linear infinite; }
+    @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100">
+  <main class="max-w-6xl mx-auto p-5 md:p-8 pb-16" id="appRoot">
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">AUD–USD FX Dashboard</h1>
+        <span class="px-2 py-1 text-xs rounded-md bg-slate-200/70 dark:bg-white/10" id="clock">—</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <label for="pair" class="text-sm">Pair</label>
+        <select id="pair" class="card px-3 py-2 outline-none">
+          <option value="AUD_USD" selected>AUD → USD</option>
+          <option value="USD_AUD">USD → AUD</option>
+        </select>
+        <div class="flex items-center gap-2">
+          <button id="fullscreenBtn" class="btn btn-inactive" title="Toggle Fullscreen">⛶ Fullscreen</button>
+          <label class="flex items-center gap-2 text-sm"><input id="rotateToggle" type="checkbox" class="accent-blue-600"> Auto‑rotate ranges</label>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Card -->
+    <section class="card p-5 mb-6 grid md:grid-cols-4 gap-4">
+      <div class="col-span-2">
+        <div class="text-xs uppercase tracking-wide text-slate-500">Spot</div>
+        <div class="flex items-baseline gap-3">
+          <div id="spot" class="kpi">—</div>
+          <div id="asof" class="kpi-sub">as of —</div>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-slate-500">Change (range)</div>
+        <div class="flex items-baseline gap-3">
+          <span id="delta" class="text-2xl font-semibold">—</span>
+          <span id="pct" class="kpi-sub">—</span>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-slate-500">vs Prev Close</div>
+        <div class="flex items-baseline gap-3">
+          <span id="prevDelta" class="text-xl font-semibold">—</span>
+          <span id="prevPct" class="kpi-sub">—</span>
+        </div>
+      </div>
+      <div class="md:col-span-4 flex items-end justify-start md:justify-end gap-2">
+        <button class="btn btn-active" data-range="1D">1D</button>
+        <button class="btn btn-inactive" data-range="1W">1W</button>
+        <button class="btn btn-inactive" data-range="1M">1M</button>
+        <button class="btn btn-inactive" data-range="1Y">1Y</button>
+        <label class="ml-3 text-sm flex items-center gap-2"><input id="displayToggle" type="checkbox" class="accent-blue-600"> Large‑format mode</label>
+      </div>
+    </section>
+
+    <!-- Chart Card -->
+    <section class="card p-4 mb-6">
+      <div class="flex items-center justify-between px-2 pt-2">
+        <h2 class="text-sm md:text-base font-semibold" id="chartTitle">AUD/USD — 1D</h2>
+        <div class="text-xs text-slate-500" id="sourceNote">Source: frankfurter.app</div>
+      </div>
+      <div class="p-2 md:p-3">
+        <canvas id="chart" height="160"></canvas>
+      </div>
+    </section>
+
+    <!-- Recent table -->
+    <section class="card p-4">
+      <div class="flex items-center justify-between px-2 pt-1">
+        <h3 class="font-semibold">Last 5 business days</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr><th class="py-2 px-2">Date</th><th class="py-2 px-2">Rate</th><th class="py-2 px-2">Δ Day</th><th class="py-2 px-2">Δ %</th></tr>
+          </thead>
+          <tbody id="last5"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="text-xs text-slate-500 mt-6">
+      <p>This dashboard uses the <a class="underline" href="https://www.frankfurter.app/" target="_blank" rel="noopener">Frankfurter</a> public FX API (ECB daily rates). Timeseries are daily; the 1D view shows the last two business days. Clock shown in Australia/Sydney.</p>
+    </footer>
+  </main>
+
+  <!-- Ticker for large displays -->
+  <div class="ticker" id="ticker" aria-hidden="true">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+
+  <script>
+    // --- Utilities ---
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+    function formatDateISO(d) { return d.toISOString().slice(0,10); }
+    function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
+    function subPeriod(range) {
+      const now = new Date();
+      switch (range) {
+        case '1D': return [addDays(now, -3), now];
+        case '1W': return [addDays(now, -8), now];
+        case '1M': return [addDays(now, -35), now];
+        case '1Y': return [addDays(now, -370), now];
+      }
+    }
+    function humanDate(dateStr) { const d = new Date(dateStr); return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'2-digit' }); }
+    function setColor(el, up) { el.classList.remove('text-red-600','text-emerald-600'); el.classList.add(up ? 'text-emerald-600' : 'text-red-600'); }
+
+    // Clock (Australia/Sydney)
+    const tz = 'Australia/Sydney';
+    function tickClock(){ $('#clock').textContent = new Intl.DateTimeFormat(undefined,{ timeZone: tz, hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(new Date()) + ' AEST/AEDT'; }
+    setInterval(tickClock, 1000); tickClock();
+
+    // --- Data Fetching ---
+    async function fetchTimeseries(base, symbol, start, end) {
+      const url = `https://api.frankfurter.app/${formatDateISO(start)}..${formatDateISO(end)}?base=${base}&symbols=${symbol}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Network error fetching FX data');
+      const data = await res.json();
+      const entries = Object.entries(data.rates).map(([date, obj]) => ({ date, value: obj[symbol] })).sort((a,b)=> a.date.localeCompare(b.date));
+      return entries;
+    }
+    function invertSeries(series){ return series.map(p=>({ date:p.date, value: 1/p.value })); }
+
+    // --- Chart Setup ---
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart;
+    function renderChart(labels, data, isUp) {
+      const color = isUp ? 'rgb(16,185,129)' : 'rgb(220,38,38)';
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data, borderColor: color, pointBackgroundColor: color, pointRadius: 2, borderWidth: 3, tension: 0.25, fill: false }] }, options:{ interaction:{intersect:false,mode:'index'}, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> `${c.parsed.y.toFixed(5)}` } } }, scales:{ x:{ ticks:{ maxTicksLimit:9 } }, y:{ ticks:{ callback:(v)=> v.toFixed(4) }, beginAtZero:false } } } });
+    }
+
+    // --- State & UI ---
+    let state = { pair: 'AUD_USD', range: '1D', series: [] };
+
+    async function refresh() {
+      const [start, end] = subPeriod(state.range);
+      const isAudUsd = ($('#pair').value === 'AUD_USD');
+      let series = await fetchTimeseries('AUD', 'USD', start, end);
+      if (!isAudUsd) series = invertSeries(series);
+      if (state.range === '1D') series = series.slice(-2);
+      state.series = series;
+
+      if (series.length < 2) { ['spot','delta','pct','prevDelta','prevPct','asof'].forEach(id=>$('#'+id).textContent='—'); renderChart([],[],false); $('#last5').innerHTML=''; return; }
+
+      const first = series[0].value, last = series[series.length-1].value;
+      const delta = last - first, pct = (delta/first)*100; const isUp = delta >= 0;
+      $('#spot').textContent = last.toFixed(5);
+      $('#asof').textContent = `as of ${humanDate(series[series.length-1].date)}`;
+      $('#delta').textContent = `${isUp ? '▲' : '▼'} ${Math.abs(delta).toFixed(5)}`;
+      $('#pct').textContent = `(${isUp ? '+' : '−'}${Math.abs(pct).toFixed(2)}%)`;
+      setColor($('#delta'), isUp); setColor($('#pct'), isUp);
+
+      // Previous close (use last two business days from full month window for stability)
+      const monthWindow = await fetchTimeseries('AUD','USD', addDays(end,-10), end);
+      const monthSeries = isAudUsd ? monthWindow : invertSeries(monthWindow);
+      const last2 = monthSeries.slice(-2);
+      if (last2.length === 2) {
+        const prevDelta = last2[1].value - last2[0].value;
+        const prevPct = (prevDelta / last2[0].value) * 100;
+        const upPrev = prevDelta >= 0;
+        $('#prevDelta').textContent = `${upPrev ? '▲' : '▼'} ${Math.abs(prevDelta).toFixed(5)}`;
+        $('#prevPct').textContent = `(${upPrev ? '+' : '−'}${Math.abs(prevPct).toFixed(2)}%)`;
+        setColor($('#prevDelta'), upPrev); setColor($('#prevPct'), upPrev);
+      }
+
+      const labels = series.map(p=>p.date); const data = series.map(p=>p.value);
+      renderChart(labels, data, isUp);
+      const titlePair = isAudUsd ? 'AUD/USD' : 'USD/AUD';
+      $('#chartTitle').textContent = `${titlePair} — ${state.range}`;
+
+      // Last 5 business days table (from monthSeries)
+      const last5 = monthSeries.slice(-5);
+      const tbody = $('#last5'); tbody.innerHTML = '';
+      for (let i=0; i<last5.length; i++) {
+        const cur = last5[i]; const prev = i>0 ? last5[i-1] : null;
+        const d = prev ? (cur.value - prev.value) : 0; const p = prev ? ((d/prev.value)*100) : 0;
+        const up = d >= 0;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class=\"py-2 px-2\">${humanDate(cur.date)}</td>
+                        <td class=\"py-2 px-2\">${cur.value.toFixed(5)}</td>
+                        <td class=\"py-2 px-2 ${up? 'text-emerald-600':'text-red-600'}\">${prev? (up?'▲':'▼')+' '+Math.abs(d).toFixed(5): '—'}</td>
+                        <td class=\"py-2 px-2 ${up? 'text-emerald-600':'text-red-600'}\">${prev? (up?'+':'−')+Math.abs(p).toFixed(2)+'%':'—'}</td>`;
+        tbody.appendChild(tr);
+      }
+
+      updateTicker(titlePair, last, delta, pct);
+    }
+
+    function setActiveRangeButton(range){ $$("button[data-range]").forEach(btn=>{ if(btn.dataset.range===range){ btn.classList.remove('btn-inactive'); btn.classList.add('btn-active'); } else { btn.classList.remove('btn-active'); btn.classList.add('btn-inactive'); } }); }
+
+    // Fullscreen
+    $('#fullscreenBtn').addEventListener('click', async ()=>{
+      if (!document.fullscreenElement) { await document.documentElement.requestFullscreen(); } else { await document.exitFullscreen(); }
+    });
+
+    // Large display mode (bigger UI)
+    $('#displayToggle').addEventListener('change', (e)=>{ $('#appRoot').classList.toggle('screen-xl', e.target.checked); $('#ticker').style.display = e.target.checked? 'flex':'none'; });
+
+    // Auto-rotate ranges for wallboards
+    const sequence = ['1D','1W','1M','1Y'];
+    let rotateTimer = null; let seqIdx = 0;
+    function startRotate(){ stopRotate(); rotateTimer = setInterval(()=>{ seqIdx = (seqIdx+1)%sequence.length; state.range = sequence[seqIdx]; setActiveRangeButton(state.range); refresh(); }, 10000); }
+    function stopRotate(){ if (rotateTimer) clearInterval(rotateTimer); rotateTimer = null; }
+    $('#rotateToggle').addEventListener('change', (e)=>{ e.target.checked ? startRotate() : stopRotate(); });
+
+    // Range buttons
+    $$("button[data-range]").forEach(btn => btn.addEventListener('click', () => { state.range = btn.dataset.range; setActiveRangeButton(state.range); refresh(); }));
+    $('#pair').addEventListener('change', refresh);
+
+    // Ticker builder
+    function updateTicker(pair, last, delta, pct){
+      const up = delta >= 0; const sign = up? '+':'−';
+      const color = up? 'text-emerald-300':'text-red-300';
+      const items = [ `${pair} ${last.toFixed(5)} (${sign}${Math.abs(pct).toFixed(2)}%)`, `Range: ${state.range}`, 'Source: ECB via Frankfurter' ];
+      const content = items.map(x=>`<span class=\"px-6 ${color}\">${x}</span>`).join('');
+      $('#tickerTrack').innerHTML = content + content; // duplicate for seamless loop
+    }
+
+    // Initial load
+    (async () => {
+      setActiveRangeButton(state.range);
+      await refresh();
+      // Data auto-refresh every 30 minutes
+      setInterval(refresh, 30 * 60 * 1000);
+    })();
+  </script>
+</body>
+</html>
