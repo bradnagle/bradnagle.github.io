@@ -1,4 +1,4 @@
-name: Fetch AUDUSD 15m + Daily
+name: Fetch AUDUSD 15m + Daily + Forecast
 
 on:
   schedule:
@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/scripts/fetch_audusd.py"
       - ".github/workflows/fetch-audusd.yml"
+      - "requirements.txt"
 
 permissions:
   contents: write
@@ -29,10 +30,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas
           pip install -r requirements.txt
 
-      - name: Fetch AUDUSD 15m + Daily and write JSONs
+      - name: Fetch data and forecasts
         run: python .github/scripts/fetch_audusd.py
 
       - name: Commit JSON if changed
@@ -40,12 +40,9 @@ jobs:
           if [[ -n "$(git status --porcelain)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-            # Ensure branch is up to date before commit
             git pull --rebase origin main || true
-
             git add data/*.json
-            git commit -m "Update AUDUSD 15m + Daily JSONs"
+            git commit -m "Update AUDUSD 15m + Daily + Forecast JSONs"
             git push origin main
           else
             echo "No changes to commit"
